@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { answerFromNotes } from '../services/chat';
 
 interface Message {
   id: string;
@@ -19,40 +21,28 @@ interface Message {
   time: string;
 }
 
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: 'msg-1',
-    sender: 'user',
-    text: "Can you summarize the Newton's laws from my Physics notes?",
-    time: '10:30 AM',
-  },
-  {
-    id: 'msg-2',
-    sender: 'ai',
-    text: "Based on your Physics notes, Newton's three laws of motion are:\n\n• First Law (Inertia): An object remains at rest or in uniform motion unless acted upon by an external force.\n\n• Second Law (F = ma): Acceleration is produced when a force acts on a mass. The force is equal to mass multiplied by acceleration.\n\n• Third Law (Action-Reaction): For every action, there is an equal and opposite reaction.",
-    time: '10:31 AM',
-  },
-  {
-    id: 'msg-3',
-    sender: 'user',
-    text: 'What are the key formulas for electromagnetism?',
-    time: '10:33 AM',
-  },
-  {
-    id: 'msg-4',
-    sender: 'ai',
-    text: "Here are the essential electromagnetism formulas extracted from your classroom slides:\n\n• Coulomb's Law: F = k * (|q₁q₂|) / r²\n• Ohm's Law: V = I * R\n• Electric Field: E = F / q\n• Faraday's Law: EMF = -dΦ/dt",
-    time: '10:34 AM',
-  },
-];
-
 export default function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [savedNotes, setSavedNotes] = useState<any[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const handleSend = () => {
+  useEffect(() => {
+    async function loadNotes() {
+      try {
+        const jsonValue = await AsyncStorage.getItem('snapnotes_data');
+        if (jsonValue != null) {
+          setSavedNotes(JSON.parse(jsonValue));
+        }
+      } catch (e) {
+        console.error('Failed to load notes for chat:', e);
+      }
+    }
+    loadNotes();
+  }, []);
+
+  const handleSend = async () => {
     if (!inputText.trim()) return;
 
     const userMessage: Message = {
@@ -64,19 +54,43 @@ export default function ChatScreen() {
 
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
-
-    // Simulate AI typing and responding
     setIsAiTyping(true);
-    setTimeout(() => {
+
+    if (savedNotes.length === 0) {
+      setTimeout(() => {
+        const aiMessage: Message = {
+          id: `msg-${Date.now() + 1}`,
+          sender: 'ai',
+          text: "You have no notes yet. Go to Home and import some classroom photos first!",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages(prev => [...prev, aiMessage]);
+        setIsAiTyping(false);
+      }, 500);
+      return;
+    }
+
+    try {
+      const responseText = await answerFromNotes(userMessage.text, savedNotes);
       const aiMessage: Message = {
         id: `msg-${Date.now() + 1}`,
         sender: 'ai',
-        text: `I've checked your notes on that topic. Here is what I found:\n\n• Related concept: We've saved classroom images matching "${userMessage.text}".\n• Summary: In your imported notes, key concepts are being indexed. Make sure to import more photos of your slides to get complete formulas and explanations!`,
+        text: responseText,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      const errorMessage: Message = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'ai',
+        text: "Sorry, I couldn't connect to the AI. Make sure your API key is valid.",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsAiTyping(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -125,7 +139,7 @@ export default function ChatScreen() {
           {isAiTyping && (
             <View style={[styles.messageWrapper, styles.messageAiWrapper]}>
               <View style={[styles.messageBubble, styles.messageAiBubble, styles.typingBubble]}>
-                <Text style={styles.typingText}>SnapNotes AI is typing...</Text>
+                <Text style={styles.typingText}>...</Text>
               </View>
             </View>
           )}
