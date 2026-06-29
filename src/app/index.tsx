@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import ImageView from 'react-native-image-viewing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { extractNotesFromImage } from '@/services/groq';
 
 function parseNotes(text: string, fallbackTitle: string) {
@@ -84,35 +85,35 @@ interface CardItem {
   isPlaceholder: boolean;
 }
 
-const INITIAL_CARDS: CardItem[] = [
-  {
-    id: 'placeholder-physics',
-    title: 'Physics',
-    notesCount: '12 notes',
-    date: 'Last updated: 2 days ago',
-    isPlaceholder: true,
-  },
-  {
-    id: 'placeholder-math',
-    title: 'Math',
-    notesCount: '8 notes',
-    date: 'Last updated: Yesterday',
-    isPlaceholder: true,
-  },
-  {
-    id: 'placeholder-chemistry',
-    title: 'Chemistry',
-    notesCount: '5 notes',
-    date: 'Last updated: 3 days ago',
-    isPlaceholder: true,
-  },
-];
+const STORAGE_KEY = 'snapnotes_data';
+
+async function saveNotes(notes: CardItem[]) {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+  } catch (e) {
+    console.error('Failed to save notes:', e);
+  }
+}
+
+async function loadNotes(): Promise<CardItem[]> {
+  try {
+    const jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
+    return jsonValue != null ? JSON.parse(jsonValue) : [];
+  } catch (e) {
+    console.error('Failed to load notes:', e);
+    return [];
+  }
+}
 
 export default function NotesScreen() {
-  const [cards, setCards] = useState<CardItem[]>(INITIAL_CARDS);
+  const [cards, setCards] = useState<CardItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardItem | null>(null);
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
+
+  useEffect(() => {
+    loadNotes().then(setCards);
+  }, []);
 
   const handlePickAndProcessImages = async () => {
     try {
@@ -160,7 +161,11 @@ export default function NotesScreen() {
       }
 
       if (newCards.length > 0) {
-        setCards(prev => [...prev, ...newCards]);
+        setCards(prev => {
+          const updated = [...prev, ...newCards];
+          saveNotes(updated);
+          return updated;
+        });
       }
     } catch (error) {
       console.error('Gallery picker error:', error);
@@ -171,7 +176,11 @@ export default function NotesScreen() {
   };
 
   const deleteCard = (id: string) => {
-    setCards(prev => prev.filter(card => card.id !== id));
+    setCards(prev => {
+      const updated = prev.filter(card => card.id !== id);
+      saveNotes(updated);
+      return updated;
+    });
   };
 
   return (
@@ -184,7 +193,13 @@ export default function NotesScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {cards.map(card => {
+          {cards.length === 0 && !loading ? (
+            <View style={styles.emptyStateContainer}>
+              <Text style={styles.emptyStateTitle}>No notes yet</Text>
+              <Text style={styles.emptyStateSubtitle}>Tap + to import a classroom photo</Text>
+            </View>
+          ) : (
+            cards.map(card => {
             const rawText = card.title + '\n' + (card.content || '');
             const parsed = card.isPlaceholder 
               ? { type: 'Sample', subject: 'General', title: card.title, whatThisIs: 'Placeholder content', explanation: card.content || '', keyTakeaway: '' }
@@ -259,7 +274,7 @@ export default function NotesScreen() {
 
               <Text style={styles.cardDate}>{card.date}</Text>
             </TouchableOpacity>
-          )})}
+          )}))}
         </ScrollView>
 
         {/* Floating Add Button */}
@@ -389,6 +404,21 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingBottom: 100, // Extra padding to scroll past the FAB
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 100,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#666666',
+    marginBottom: 8,
+  },
+  emptyStateSubtitle: {
+    fontSize: 14,
+    color: '#444444',
   },
   card: {
     backgroundColor: '#1e1e1e',
