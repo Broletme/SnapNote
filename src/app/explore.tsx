@@ -1,17 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ScrollView,
   StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { answerFromNotes } from '../services/chat';
 
 interface Message {
@@ -103,7 +104,10 @@ export default function ChatScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Ask your notes</Text>
+          <Text style={styles.headerTitle}>
+            Ask your <Text style={styles.headerTitleHighlight}>notes</Text> ✨
+          </Text>
+          <Text style={styles.headerSubtitle}>Powered by SnapNotes AI</Text>
         </View>
 
         {/* Messages List */}
@@ -161,7 +165,7 @@ export default function ChatScreen() {
             onPress={handleSend}
             activeOpacity={0.8}
           >
-            <Text style={styles.sendButtonText}>Send</Text>
+            <Ionicons name="arrow-up" size={24} color="#0f0f0f" />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -180,16 +184,25 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: Platform.OS === 'android' ? 50 : 20,
     paddingBottom: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#1e1e1e',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '900',
     color: '#ffffff',
     letterSpacing: 0.5,
+  },
+  headerTitleHighlight: {
+    color: '#6c63ff',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#aaaaaa',
+    marginTop: 4,
+    fontWeight: '500',
   },
   chatArea: {
     flex: 1,
@@ -216,25 +229,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   messageUserBubble: {
-    backgroundColor: '#6c63ff',
+    backgroundColor: '#6366f1',
     borderBottomRightRadius: 4,
+    borderTopRightRadius: 20,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
   },
   messageAiBubble: {
-    backgroundColor: '#1e1e1e',
-    borderColor: '#2e2e2e',
-    borderWidth: 1,
+    backgroundColor: '#1c1c1e',
+    borderWidth: 0,
     borderBottomLeftRadius: 4,
+    borderTopRightRadius: 20,
+    borderTopLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
   messageText: {
     color: '#ffffff',
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 24,
   },
   messageTime: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 11,
     alignSelf: 'flex-end',
-    marginTop: 6,
+    marginTop: 8,
   },
   typingBubble: {
     opacity: 0.7,
@@ -246,37 +264,36 @@ const styles = StyleSheet.create({
   },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#1e1e1e',
+    paddingTop: 12,
+    paddingBottom: 20,
     backgroundColor: '#0f0f0f',
     gap: 12,
   },
   input: {
     flex: 1,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#1c1c1e',
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#2e2e2e',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 14,
     color: '#ffffff',
-    fontSize: 15,
-    maxHeight: 100,
+    fontSize: 16,
+    maxHeight: 120,
   },
   sendButton: {
-    backgroundColor: '#6c63ff',
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  sendButtonText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-    fontSize: 14,
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    marginBottom: 2,
   },
 });
