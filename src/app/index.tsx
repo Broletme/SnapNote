@@ -10,8 +10,10 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
+  Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import ImageView from 'react-native-image-viewing';
 import { extractNotesFromImage } from '@/services/groq';
 
 function parseNotes(text: string, fallbackTitle: string) {
@@ -78,6 +80,7 @@ interface CardItem {
   notesCount?: string;
   date: string;
   content?: string;
+  imageUri?: string;
   isPlaceholder: boolean;
 }
 
@@ -109,6 +112,7 @@ export default function NotesScreen() {
   const [cards, setCards] = useState<CardItem[]>(INITIAL_CARDS);
   const [loading, setLoading] = useState(false);
   const [selectedCard, setSelectedCard] = useState<CardItem | null>(null);
+  const [isImageViewVisible, setIsImageViewVisible] = useState(false);
 
   const handlePickAndProcessImages = async () => {
     try {
@@ -145,6 +149,7 @@ export default function NotesScreen() {
             id: `note-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
             title: 'Extracted Note',
             content: notesText,
+            imageUri: asset.uri,
             date: 'Just now',
             isPlaceholder: false,
           });
@@ -215,15 +220,20 @@ export default function NotesScreen() {
                     ) : null}
                   </View>
                 </View>
-                {!card.isPlaceholder && (
-                  <TouchableOpacity
-                    onPress={() => deleteCard(card.id)}
-                    style={styles.deleteButton}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.deleteButtonText}>✕</Text>
-                  </TouchableOpacity>
-                )}
+                <View style={styles.cardHeaderRight}>
+                  {card.imageUri ? (
+                    <Image source={{ uri: card.imageUri }} style={styles.cardThumbnail} />
+                  ) : null}
+                  {!card.isPlaceholder && (
+                    <TouchableOpacity
+                      onPress={() => deleteCard(card.id)}
+                      style={styles.deleteButton}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.deleteButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               {parsed.whatThisIs ? (
@@ -290,6 +300,15 @@ export default function NotesScreen() {
                   </TouchableOpacity>
                 </View>
                 <ScrollView contentContainerStyle={styles.modalScrollContent}>
+                  {selectedCard.imageUri ? (
+                    <TouchableOpacity activeOpacity={0.8} onPress={() => setIsImageViewVisible(true)}>
+                      <Image 
+                        source={{ uri: selectedCard.imageUri }} 
+                        style={styles.modalImage} 
+                        resizeMode="cover" 
+                      />
+                    </TouchableOpacity>
+                  ) : null}
                   <Text style={styles.modalTitle}>{parsed.title}</Text>
                   <View style={styles.modalBadgesRow}>
                     {parsed.subject && parsed.subject.toLowerCase() !== 'general' ? (
@@ -328,6 +347,13 @@ export default function NotesScreen() {
             );
           })()}
         </Modal>
+
+        <ImageView
+          images={selectedCard?.imageUri ? [{ uri: selectedCard.imageUri }] : []}
+          imageIndex={0}
+          visible={isImageViewVisible}
+          onRequestClose={() => setIsImageViewVisible(false)}
+        />
       </View>
     </SafeAreaView>
   );
@@ -385,10 +411,19 @@ const styles = StyleSheet.create({
   },
   cardTitleContainer: {
     flex: 1,
+    paddingRight: 10,
+    justifyContent: 'flex-start',
+  },
+  cardHeaderRight: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  cardThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#2e2e2e',
   },
   cardTitle: {
     fontSize: 18,
@@ -515,6 +550,13 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingTop: 0,
     paddingBottom: 40,
+  },
+  modalImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 20,
+    backgroundColor: '#1e1e1e',
   },
   modalTitle: {
     fontSize: 32,
