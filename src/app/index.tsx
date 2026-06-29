@@ -9,13 +9,72 @@ import {
   Alert,
   SafeAreaView,
   StatusBar,
+  Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { extractNotesFromImage } from '@/services/groq';
 
+function parseNotes(text: string, fallbackTitle: string) {
+  let type = '';
+  let subject = '';
+  let title = fallbackTitle.replace(/^[#\s]+/, '').trim();
+  let whatThisIs = '';
+  let explanation = '';
+  let keyTakeaway = '';
+
+  const lines = text.split('\n');
+  let currentSection = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (currentSection === 'WHAT THIS IS') whatThisIs += '\n';
+      else if (currentSection === 'EXPLANATION') explanation += '\n';
+      else if (currentSection === 'KEY TAKEAWAY') keyTakeaway += '\n';
+      continue;
+    }
+
+    if (trimmed.startsWith('TYPE:')) {
+      type = trimmed.substring(5).trim();
+      currentSection = 'TYPE';
+    } else if (trimmed.startsWith('SUBJECT:')) {
+      subject = trimmed.substring(8).trim();
+      currentSection = 'SUBJECT';
+    } else if (trimmed.startsWith('TITLE:')) {
+      title = trimmed.substring(6).trim();
+      currentSection = 'TITLE';
+    } else if (trimmed.startsWith('WHAT THIS IS:')) {
+      whatThisIs = trimmed.substring(13).trim();
+      currentSection = 'WHAT THIS IS';
+    } else if (trimmed.startsWith('EXPLANATION:')) {
+      explanation = trimmed.substring(12).trim();
+      currentSection = 'EXPLANATION';
+    } else if (trimmed.startsWith('KEY TAKEAWAY:')) {
+      keyTakeaway = trimmed.substring(13).trim();
+      currentSection = 'KEY TAKEAWAY';
+    } else {
+      if (currentSection === 'WHAT THIS IS') {
+        whatThisIs += (whatThisIs ? '\n' : '') + trimmed;
+      } else if (currentSection === 'EXPLANATION') {
+        explanation += (explanation ? '\n' : '') + trimmed;
+      } else if (currentSection === 'KEY TAKEAWAY') {
+        keyTakeaway += (keyTakeaway ? '\n' : '') + trimmed;
+      }
+    }
+  }
+
+  if (!type && !whatThisIs && !explanation && text) {
+    explanation = text;
+  }
+
+  return { type, subject, title, whatThisIs, explanation, keyTakeaway };
+}
+
 interface CardItem {
   id: string;
   title: string;
+  topic?: string;
+  keyPoints?: string[];
   notesCount?: string;
   date: string;
   content?: string;
@@ -49,6 +108,7 @@ const INITIAL_CARDS: CardItem[] = [
 export default function NotesScreen() {
   const [cards, setCards] = useState<CardItem[]>(INITIAL_CARDS);
   const [loading, setLoading] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<CardItem | null>(null);
 
   const handlePickAndProcessImages = async () => {
     try {
@@ -81,15 +141,10 @@ export default function NotesScreen() {
         try {
           const notesText = await extractNotesFromImage(asset.uri);
           
-          // Split notes to find the first non-empty line as title
-          const lines = notesText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-          const title = lines[0] || 'Extracted Note';
-          const bodyText = lines.slice(1).join('\n');
-
           newCards.push({
-            id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            title,
-            content: bodyText || notesText,
+            id: `note-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+            title: 'Extracted Note',
+            content: notesText,
             date: 'Just now',
             isPlaceholder: false,
           });
@@ -124,18 +179,41 @@ export default function NotesScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          {cards.map(card => (
-            <View key={card.id} style={styles.card}>
+          {cards.map(card => {
+            const rawText = card.title + '\n' + (card.content || '');
+            const parsed = card.isPlaceholder 
+              ? { type: 'Sample', subject: 'General', title: card.title, whatThisIs: 'Placeholder content', explanation: card.content || '', keyTakeaway: '' }
+              : parseNotes(rawText, card.title);
+
+            return (
+            <TouchableOpacity 
+              key={card.id} 
+              style={styles.card}
+              activeOpacity={0.7}
+              onPress={() => setSelectedCard(card)}
+            >
               <View style={styles.cardHeader}>
                 <View style={styles.cardTitleContainer}>
                   <Text style={styles.cardTitle} numberOfLines={2}>
-                    {card.title}
+                    {parsed.title}
                   </Text>
-                  {card.notesCount && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{card.notesCount}</Text>
-                    </View>
-                  )}
+                  <View style={styles.badgesRow}>
+                    {parsed.subject && parsed.subject.toLowerCase() !== 'general' ? (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{parsed.subject}</Text>
+                      </View>
+                    ) : null}
+                    {parsed.type ? (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{parsed.type}</Text>
+                      </View>
+                    ) : null}
+                    {card.notesCount && !parsed.type && !parsed.subject ? (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{card.notesCount}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
                 {!card.isPlaceholder && (
                   <TouchableOpacity
@@ -148,15 +226,30 @@ export default function NotesScreen() {
                 )}
               </View>
 
-              {card.content && (
-                <Text style={styles.cardContent} numberOfLines={4}>
-                  {card.content}
+              {parsed.whatThisIs ? (
+                <Text style={styles.cardWhatThisIs} numberOfLines={2}>
+                  {parsed.whatThisIs}
                 </Text>
-              )}
+              ) : null}
+
+              {parsed.explanation ? (
+                <View style={styles.explanationContainer}>
+                  <Text style={styles.cardContent} numberOfLines={2}>
+                    {parsed.explanation}
+                  </Text>
+                  <Text style={styles.moreText}>+ more</Text>
+                </View>
+              ) : null}
+
+              {parsed.keyTakeaway ? (
+                <Text style={styles.cardNote} numberOfLines={2}>
+                  💡 {parsed.keyTakeaway}
+                </Text>
+              ) : null}
 
               <Text style={styles.cardDate}>{card.date}</Text>
-            </View>
-          ))}
+            </TouchableOpacity>
+          )})}
         </ScrollView>
 
         {/* Floating Add Button */}
@@ -175,6 +268,66 @@ export default function NotesScreen() {
             <Text style={styles.loadingText}>Processing photos with Groq AI...</Text>
           </View>
         )}
+
+        {/* Detail Modal */}
+        <Modal
+          visible={!!selectedCard}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setSelectedCard(null)}
+        >
+          {selectedCard && (() => {
+            const rawText = selectedCard.title + '\n' + (selectedCard.content || '');
+            const parsed = selectedCard.isPlaceholder 
+              ? { type: 'Sample', subject: 'General', title: selectedCard.title, whatThisIs: 'Placeholder content', explanation: selectedCard.content || '', keyTakeaway: '' }
+              : parseNotes(rawText, selectedCard.title);
+
+            return (
+              <SafeAreaView style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity onPress={() => setSelectedCard(null)} style={styles.closeButton}>
+                    <Text style={styles.closeButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView contentContainerStyle={styles.modalScrollContent}>
+                  <Text style={styles.modalTitle}>{parsed.title}</Text>
+                  <View style={styles.modalBadgesRow}>
+                    {parsed.subject && parsed.subject.toLowerCase() !== 'general' ? (
+                      <View style={[styles.badge, styles.modalBadge]}>
+                        <Text style={styles.badgeText}>{parsed.subject}</Text>
+                      </View>
+                    ) : null}
+                    {parsed.type ? (
+                      <View style={[styles.badge, styles.modalBadge]}>
+                        <Text style={styles.badgeText}>{parsed.type}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  
+                  {parsed.whatThisIs ? (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalSectionLabel}>WHAT THIS IS</Text>
+                      <Text style={styles.modalWhatThisIs}>{parsed.whatThisIs}</Text>
+                    </View>
+                  ) : null}
+
+                  {parsed.explanation ? (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalSectionLabel}>EXPLANATION</Text>
+                      <Text style={styles.modalContentText}>{parsed.explanation}</Text>
+                    </View>
+                  ) : null}
+
+                  {parsed.keyTakeaway ? (
+                    <View style={styles.modalNoteContainer}>
+                      <Text style={styles.modalNoteText}>💡 {parsed.keyTakeaway}</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </SafeAreaView>
+            );
+          })()}
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -243,6 +396,13 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     maxWidth: '80%',
   },
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+    width: '100%',
+  },
   badge: {
     backgroundColor: '#3a3a5a',
     paddingHorizontal: 8,
@@ -264,11 +424,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  cardWhatThisIs: {
+    fontSize: 13,
+    color: '#aaaaaa',
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  explanationContainer: {
+    marginBottom: 12,
+  },
   cardContent: {
     fontSize: 14,
     color: '#dddddd',
     lineHeight: 20,
+  },
+  moreText: {
+    fontSize: 13,
+    color: '#6c63ff',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  cardNote: {
+    fontSize: 13,
+    color: '#f5d44f',
+    marginTop: 8,
     marginBottom: 12,
+    fontStyle: 'italic',
   },
   cardDate: {
     fontSize: 12,
@@ -311,5 +492,92 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '500',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 16,
+    paddingRight: 20,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  closeButtonText: {
+    color: '#ff4a4a',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  modalScrollContent: {
+    padding: 24,
+    paddingTop: 0,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  modalBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 24,
+  },
+  modalBadge: {
+    marginBottom: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  modalSection: {
+    marginBottom: 24,
+  },
+  modalSectionLabel: {
+    fontSize: 12,
+    color: '#888888',
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  modalWhatThisIs: {
+    fontSize: 16,
+    color: '#aaaaaa',
+    fontStyle: 'italic',
+    lineHeight: 24,
+  },
+  modalNoteContainer: {
+    marginTop: 32,
+    padding: 16,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f5d44f',
+  },
+  modalNoteText: {
+    fontSize: 15,
+    color: '#f5d44f',
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  modalBulletPoint: {
+    fontSize: 18,
+    color: '#dddddd',
+    marginRight: 10,
+    lineHeight: 26,
+  },
+  modalBulletText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#dddddd',
+    lineHeight: 26,
+  },
+  modalContentText: {
+    fontSize: 16,
+    color: '#dddddd',
+    lineHeight: 26,
   },
 });
